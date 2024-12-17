@@ -90,3 +90,58 @@ void cui_cursor_on()
 {
   printf("\033[?25h");
 }
+
+void cui_clear_line()
+{
+  printf("\033[2K");
+}
+
+void cui_attribute(int attr)
+{
+  printf("\033[%dm", attr);
+}
+
+void cui_attr_reverse()
+{
+  cui_attribute(7);
+}
+
+void cui_attr_normal()
+{
+  cui_attribute(0);
+}
+
+void cui_color_red()
+{
+  cui_attribute(31);
+}
+
+void cui_color_green()
+{
+  cui_attribute(32);
+}
+
+void cui_color_yellow()
+{
+  cui_attribute(33);
+}
+
+void cui_scroll_window_full()
+{
+  printf("\033[r");
+}
+
+void cui_scroll_window(int start, int end)
+{
+  printf("\033[%d;%dr", start, end);
+}
+
+void cui_scroll_up()
+{
+  printf("\033D");
+}
+
+void cui_scroll_down()
+{
+  printf("\033M");
+}

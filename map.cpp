@@ -1,7 +1,9 @@
 #include "cui.hpp"
 #include <iostream>
-#include <time.h>
 #include <vector>
+#include <string>
+#include <variant>
+#include <time.h>
 
 #define MAP_WIDTH 20
 #define MAP_HEIGHT 20
@@ -9,7 +11,15 @@
 static char ch = ' ';
 static bool upd = false;
 
-struct object
+struct Player
+{
+  int x;
+  int y;
+  int hp;
+  int attack;
+};
+
+struct Enemy
 {
   int x;
   int y;
@@ -18,21 +28,40 @@ struct object
   int attack;
 };
 
-struct object user = {5, 5, '@'};
-struct object objects[] = {
-    {10, 10, 'X', 10, 10},
-    {15, 15, 'Y', 10, 10},
-    {5, 15, 'Z', 10, 10},
-    {15, 5, 'W', 10, 10},
+struct Wall
+{
+};
+struct Rock
+{
+};
+struct Floor
+{
 };
 
+using Cell = std::variant<std::monostate, Wall, Rock, Floor, Player, Enemy>;
+
+struct Player player = {5, 5, 30, 5};
+struct Enemy enemies[] = {
+    {12, 5, 'A', 10, 3},
+    {10, 10, 'B', 10, 3},
+    {14, 14, 'C', 10, 3},
+    {17, 17, 'X', 10, 3},
+};
+
+// 仮想画面バッファ
+
+std::vector<Cell> screen_buffer;
+
+int screen_width = 0;
+int screen_height = 0;
+
 // マップデータ
-// '.': 通路
-// '#': 壁
-// '*': 岩
+// '.': 通路 (Floor)
+// '#': 壁 (Wall)
+// '*': 岩 (Rock)
 
 const std::string map[] = {
-    // 2345678901234567890
+    // 345678901234567890
     "####################", // 1
     "#..................#", // 2
     "#..*****...........#", // 3
@@ -55,54 +84,112 @@ const std::string map[] = {
     "####################", // 20
 };
 
-// 仮想画面バッファ
-std::vector<std::string> screen_buffer;
-
-int screen_width = 0;
-int screen_height = 0;
-
 // 画面バッファを初期化
 void init_screen_buffer(int width, int height)
 {
   screen_width = width;
   screen_height = height;
-  screen_buffer.resize(height, std::string(width, ' '));
+  screen_buffer.resize(height * width, std::monostate{});
 }
 
 void clear_screen_buffer()
 {
-  for (auto &line : screen_buffer)
+  screen_buffer.assign(screen_width * screen_height, std::monostate{});
+}
+
+char cell_to_char(Cell cell)
+{
+  if (std::holds_alternative<Wall>(cell))
   {
-    line = std::string(screen_width, ' ');
+    return '#';
+  }
+  else if (std::holds_alternative<Rock>(cell))
+  {
+    return '*';
+  }
+  else if (std::holds_alternative<Floor>(cell))
+  {
+    return '.';
+  }
+  else if (std::holds_alternative<Player>(cell))
+  {
+    return '@';
+  }
+  else if (std::holds_alternative<Enemy>(cell))
+  {
+    return std::get<Enemy>(cell).c;
+  }
+  else
+  {
+    return ' ';
   }
 }
 
-// 画面バッファに文字を描画
-void draw_to_buffer(int x, int y, const std::string &str)
+void char_to_cell(char c, Cell &cell)
 {
-  if (y >= 0 && y < screen_buffer.size() && x >= 0 && x + str.size() <= screen_buffer[y].size())
+  switch (c)
   {
-    screen_buffer[y].replace(x, str.size(), str);
+  case '#':
+    cell = Wall{};
+    break;
+  case '*':
+    cell = Rock{};
+    break;
+  case '.':
+    cell = Floor{};
+    break;
+  case '@':
+    cell = player;
+    break;
+  default:
+    cell = std::monostate{};
+    break;
   }
+}
+
+int buffer_index(int x, int y)
+{
+  return y * screen_width + x;
+}
+
+// 画面バッファに文字を描画
+void draw_to_buffer(int x, int y, Cell cell)
+{
+  if (y >= 0 && y < screen_height && x >= 0 && x < screen_width)
+  {
+    screen_buffer[buffer_index(x, y)] = cell;
+  }
+}
+
+bool is_in_screen(int x, int y)
+{
+  return x >= 0 && x < screen_width && y >= 0 && y < screen_height;
 }
 
 // 画面バッファの指定位置の文字を取得
 char get_from_buffer(int x, int y)
 {
-  if (y >= 0 && y < screen_buffer.size() && x >= 0 && x < screen_buffer[y].size())
+  if (is_in_screen(x, y))
   {
-    return screen_buffer[y][x];
+    Cell cell = screen_buffer[buffer_index(x, y)];
+    return cell_to_char(cell);
   }
-  return '?';
+  return ' ';
 }
 
 // 画面バッファを端末に出力
 void render_screen(int x, int y)
 {
   cui_gotoxy(x, y);
-  for (const auto &line : screen_buffer)
+  for (int j = 0; j < screen_height; j++)
   {
-    std::cout << line << std::endl;
+    for (int i = 0; i < screen_width; i++)
+    {
+      // 画面バッファの属性を適用して出力
+      Cell cell = screen_buffer[buffer_index(i, j)];
+      std::cout << cell_to_char(cell);
+    }
+    std::cout << std::endl;
   }
 }
 
@@ -127,19 +214,22 @@ void draw_map(void)
     for (int x = 0; x < MAP_WIDTH; x++)
     {
       // mapから画面バッファにコピー
-      std::string c = map[y].substr(x, 1);
-      draw_to_buffer(x, y, c);
+      char c = map[y][x];
+      Cell cell;
+      char_to_cell(c, cell);
+      draw_to_buffer(x, y, cell);
     }
   }
 }
 
 void draw_objects(void)
 {
-  draw_to_buffer(user.x, user.y, std::string(1, user.c));
+  draw_to_buffer(player.x, player.y, player);
+
   // 画面バッファにオブジェクトを描画
-  for (const auto &obj : objects)
+  for (const auto &enemy : enemies)
   {
-    draw_to_buffer(obj.x, obj.y, std::string(1, obj.c));
+    draw_to_buffer(enemy.x, enemy.y, enemy);
   }
 }
 
@@ -160,33 +250,41 @@ bool check_collision(int x, int y)
 
 void move(char input)
 {
-  int x = user.x;
-  int y = user.y;
+  int x = player.x;
+  int y = player.y;
   switch (ch)
   {
   case 'h':
     if (x > 1)
+    {
       x--;
+    }
     break;
   case 'j':
     if (y < MAP_HEIGHT)
+    {
       y++;
+    }
     break;
   case 'k':
     if (y > 1)
+    {
       y--;
+    }
     break;
   case 'l':
     if (x < MAP_WIDTH)
+    {
       x++;
+    }
     break;
   default:
     break;
   }
   if (!check_collision(x, y))
   {
-    user.x = x;
-    user.y = y;
+    player.x = x;
+    player.y = y;
   }
 }
 
@@ -215,12 +313,12 @@ void draw(void)
   if (!is_updated())
     return;
 
-  cui_clear_screen();
   clear_screen_buffer();
   draw_map();
   draw_objects();
   draw_info();
   render_screen(1, 3);
+  cui_clear_line();
   cui_gotoxy(1, 1);
   drawn();
 }
