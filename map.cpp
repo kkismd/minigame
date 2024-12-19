@@ -11,6 +11,18 @@
 static char ch = ' ';
 static bool upd = false;
 
+// ゲームの進行状況を表すenumを定義
+enum class GameState
+{
+  Title,
+  GameStart,
+  Playing,
+  GameOver,
+  StageClear
+};
+
+GameState game_state = GameState::Title;
+
 struct Player
 {
   int x;
@@ -37,14 +49,23 @@ struct Rock
 struct Floor
 {
 };
+struct Door
+{
+};
+struct UpStairs
+{
+};
+struct DownStairs
+{
+};
 
 using Cell = std::variant<std::monostate, Wall, Rock, Floor, Player, Enemy>;
 
 struct Player player = {5, 5, 30, 5};
 struct Enemy enemies[] = {
-    {12, 5, 'A', 10, 3},
-    {10, 10, 'B', 10, 3},
-    {14, 14, 'C', 10, 3},
+    {4, 15, 'A', 10, 3},
+    {9, 4, 'B', 10, 3},
+    {10, 16, 'C', 10, 3},
     {17, 17, 'X', 10, 3},
 };
 
@@ -63,24 +84,24 @@ int screen_height = 0;
 const std::string map[] = {
     // 345678901234567890
     "####################", // 1
-    "#..................#", // 2
-    "#..*****...........#", // 3
-    "#......*...........#", // 4
-    "#......*...........#", // 5
-    "#......*...........#", // 6
-    "#......*...........#", // 7
-    "#..................#", // 8
-    "#..................#", // 9
-    "#..................#", // 10
-    "#..................#", // 11
-    "#............*.....#", // 12
-    "#............*.....#", // 13
-    "#............*.....#", // 14
-    "#............*.....#", // 15
-    "#............*.....#", // 16
-    "#....*********.....#", // 17
-    "#..................#", // 18
-    "#..................#", // 19
+    "#......#....#....>.#", // 2
+    "#......+....#......#", // 3
+    "#.<....#....#......#", // 4
+    "#......#....#......#", // 5
+    "#......#....######+#", // 6
+    "#......#......#....#", // 7
+    "#......######.#....#", // 8
+    "###+#########.#+####", // 9
+    "#......######.#....#", // 10
+    "#......+..#...#....#", // 11
+    "#......##...###....#", // 12
+    "#......###+####....#", // 13
+    "#......#......#....#", // 14
+    "#......#......#....#", // 15
+    "#......#......+....#", // 16
+    "#......#......#....#", // 17
+    "#......#......#....#", // 18
+    "#......#......#....#", // 19
     "####################", // 20
 };
 
@@ -111,6 +132,18 @@ char cell_to_char(Cell cell)
   {
     return '.';
   }
+  else if (std::holds_alternative<Door>(cell))
+  {
+    return '+';
+  }
+  else if (std::holds_alternative<UpStairs>(cell))
+  {
+    return '<';
+  }
+  else if (std::holds_alternative<DownStairs>(cell))
+  {
+    return '>';
+  }
   else if (std::holds_alternative<Player>(cell))
   {
     return '@';
@@ -137,6 +170,15 @@ void char_to_cell(char c, Cell &cell)
     break;
   case '.':
     cell = Floor{};
+    break;
+  case '+':
+    cell = Door{};
+    break;
+  case '<':
+    cell = UpStairs{};
+    break;
+  case '>':
+    cell = DownStairs{};
     break;
   case '@':
     cell = player;
@@ -241,7 +283,8 @@ void draw_info(void)
 
 bool check_collision(int x, int y)
 {
-  if (get_from_buffer(x, y) == '.')
+  char obj = get_from_buffer(x, y);
+  if (obj == '.' || obj == '+')
   {
     return false;
   }
@@ -288,7 +331,21 @@ void move(char input)
   }
 }
 
-void update(void)
+void update_title(void)
+{
+  int key = cui_getch_nowait();
+  if (key != -1)
+  {
+    ch = key;
+    if (ch == 's')
+    {
+      game_state = GameState::Playing;
+    }
+    updated();
+  }
+}
+
+void update_playing(void)
 {
   int key = cui_getch_nowait();
   if (key != -1)
@@ -308,7 +365,30 @@ void update(void)
   }
 }
 
-void draw(void)
+void update(void)
+{
+  if (game_state == GameState::Title)
+  {
+    update_title();
+  }
+  else if (game_state == GameState::Playing)
+  {
+    update_playing();
+  }
+}
+
+void draw_title(void)
+{
+  if (!is_updated())
+    return;
+
+  cui_gotoxy(10, 10);
+  std::cout << "Title";
+
+  drawn();
+}
+
+void draw_playing(void)
 {
   if (!is_updated())
     return;
@@ -321,6 +401,23 @@ void draw(void)
   cui_clear_line();
   cui_gotoxy(1, 1);
   drawn();
+}
+
+void draw(void)
+{
+  // 関数ポインタ draw_func によって描画関数を切り替える
+  void (*draw_func)() = nullptr;
+
+  if (game_state == GameState::Title)
+  {
+    draw_func = draw_title;
+  }
+  else if (game_state == GameState::Playing)
+  {
+    draw_func = draw_playing;
+  }
+
+  draw_func();
 }
 
 int main()
