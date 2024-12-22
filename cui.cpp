@@ -3,6 +3,9 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <cstdio>
+#include <iostream>
+
+const std::string ESC_SEQ = "\033[";
 
 // global variable to store terminal settings
 static struct termios oldt;
@@ -73,32 +76,32 @@ int cui_getch_nowait()
 
 void cui_clear_screen()
 {
-  printf("\033[H\033[J");
+  std::cout << ESC_SEQ << "H" << ESC_SEQ << "J";
 }
 
 void cui_gotoxy(int x, int y)
 {
-  printf("\033[%d;%dH", y, x);
+  std::cout << ESC_SEQ << y << ";" << x << "H";
 }
 
 void cui_cursor_off()
 {
-  printf("\033[?25l");
+  std::cout << ESC_SEQ << "?25l";
 }
 
 void cui_cursor_on()
 {
-  printf("\033[?25h");
+  std::cout << ESC_SEQ << "?25h";
 }
 
 void cui_clear_line()
 {
-  printf("\033[2K");
+  std::cout << ESC_SEQ << "2K";
 }
 
 void cui_attribute(int attr)
 {
-  printf("\033[%dm", attr);
+  std::cout << ESC_SEQ << attr << "m";
 }
 
 void cui_attr_reverse()
@@ -128,20 +131,20 @@ void cui_color_yellow()
 
 void cui_scroll_window_full()
 {
-  printf("\033[r");
+  std::cout << ESC_SEQ << "r";
 }
 
 void cui_scroll_window(int start, int end)
 {
-  printf("\033[%d;%dr", start, end);
+  std::cout << ESC_SEQ << start << ";" << end << "r";
 }
 
 void cui_scroll_up()
 {
-  printf("\033D");
+  std::cout << "\033D";
 }
 
 void cui_scroll_down()
 {
-  printf("\033M");
+  std::cout << "\033M";
 }
