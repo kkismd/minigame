@@ -3,13 +3,14 @@
 #include <vector>
 #include <string>
 #include <variant>
-#include <time.h>
+#include <ctime>
 
 #define MAP_WIDTH 20
 #define MAP_HEIGHT 20
 
-static char ch = ' ';
-static bool upd = false;
+char ch = ' ';
+bool upd = false;
+int frame = 0;
 
 // ゲームの進行状況を表すenumを定義
 enum class GameState
@@ -59,7 +60,7 @@ struct DownStairs
 {
 };
 
-using Cell = std::variant<std::monostate, Wall, Rock, Floor, Player, Enemy>;
+using Cell = std::variant<std::monostate, Wall, Rock, Floor, Door, UpStairs, DownStairs, Player, Enemy>;
 
 struct Player player = {5, 5, 30, 5};
 struct Enemy enemies[] = {
@@ -80,6 +81,9 @@ int screen_height = 0;
 // '.': 通路 (Floor)
 // '#': 壁 (Wall)
 // '*': 岩 (Rock)
+// '+': 扉 (Door)
+// '<': 上り階段(UpStairs)
+// '>': 下り階段(DownStairs)
 
 const std::string map[] = {
     // 345678901234567890
@@ -331,18 +335,26 @@ void move(char input)
   }
 }
 
+bool spaceKeyPressed = false;
+int gameStartFrame = 0;
+
 void update_title(void)
 {
   int key = cui_getch_nowait();
   if (key != -1)
   {
     ch = key;
-    if (ch == 's')
+    if (spaceKeyPressed != true && ch == ' ')
     {
-      game_state = GameState::Playing;
+      spaceKeyPressed = true;
+      gameStartFrame = frame;
     }
-    updated();
   }
+  if (spaceKeyPressed == true && frame - gameStartFrame > 30)
+  {
+    game_state = GameState::Playing;
+  }
+  updated();
 }
 
 void update_playing(void)
@@ -382,9 +394,27 @@ void draw_title(void)
   if (!is_updated())
     return;
 
-  cui_gotoxy(10, 10);
-  std::cout << "Title";
-
+  if (!spaceKeyPressed)
+  {
+    cui_gotoxy(5, 10);
+    std::cout << "M A P E R   G A M E";
+  }
+  else
+  {
+    int count = frame - gameStartFrame;
+    if (count < 30)
+    {
+      cui_gotoxy(1, 10);
+      for (int i = 0; i < count; i++)
+      {
+        std::cout << ".";
+      }
+    }
+    else
+    {
+      cui_clear_screen();
+    }
+  }
   drawn();
 }
 
@@ -420,21 +450,39 @@ void draw(void)
   draw_func();
 }
 
+//
+void wait(std::timespec ts1, std::timespec ts2, long interval)
+{
+  time_t sec = ts2.tv_sec - ts1.tv_sec;
+  long nsec = ts2.tv_nsec - ts1.tv_nsec;
+  if (sec == 0 && nsec < interval)
+  {
+    std::timespec remaining_time;
+    remaining_time.tv_sec = 0;
+    remaining_time.tv_nsec = interval - nsec;
+    nanosleep(&remaining_time, NULL);
+  }
+}
+
 int main()
 {
-  struct timespec req = {0};
-  req.tv_sec = 0;
-  req.tv_nsec = 33333333L; // 1/30秒 (33.33ミリ秒)
+  const long CYCLE = 33333333L; // 1/30秒 (ナノ秒単位)
+  std::timespec ts1, ts2 = {0};
 
   cui_clear_screen();
   cui_cursor_off();
   init_screen_buffer(MAP_WIDTH + 2, MAP_HEIGHT + 2);
   updated();
+  frame = 0;
+  spaceKeyPressed = false;
 
   while (true)
   {
+    timespec_get(&ts1, TIME_UTC);
     update();
     draw();
-    nanosleep(&req, NULL); // 1/30秒スリープ
+    timespec_get(&ts2, TIME_UTC);
+    wait(ts1, ts2, CYCLE);
+    frame++;
   }
 }
