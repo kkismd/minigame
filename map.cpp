@@ -31,9 +31,15 @@ struct Enemy
 struct Wall
 {
 };
+
 struct Rock
 {
+  int x;
+  int y;
+  int dx;
+  int dy;
 };
+
 struct Floor
 {
 };
@@ -47,6 +53,7 @@ struct Enemy enemies[] = {
     {14, 14, 'C', 10, 3},
     {17, 17, 'X', 10, 3},
 };
+std::vector<Rock> rocks;
 
 // 仮想画面バッファ
 
@@ -185,7 +192,6 @@ void render_screen(int x, int y)
   {
     for (int i = 0; i < screen_width; i++)
     {
-      // 画面バッファの属性を適用して出力
       Cell cell = screen_buffer[buffer_index(i, j)];
       std::cout << cell_to_char(cell);
     }
@@ -207,19 +213,34 @@ void drawn()
   upd = false;
 }
 
-void draw_map(void)
+void init_map()
 {
   for (int y = 0; y < MAP_HEIGHT; y++)
   {
     for (int x = 0; x < MAP_WIDTH; x++)
     {
-      // mapから画面バッファにコピー
       char c = map[y][x];
       Cell cell;
       char_to_cell(c, cell);
-      draw_to_buffer(x, y, cell);
+      if (std::holds_alternative<Rock>(cell))
+      {
+        Rock rock;
+        rock.x = x;
+        rock.y = y;
+        rock.dx = 0;
+        rock.dy = 0;
+        rocks.push_back(rock);
+      }
+      else
+      {
+        draw_to_buffer(x, y, cell);
+      }
     }
   }
+}
+
+void draw_map(void)
+{
 }
 
 void draw_objects(void)
@@ -231,6 +252,10 @@ void draw_objects(void)
   {
     draw_to_buffer(enemy.x, enemy.y, enemy);
   }
+  for (const auto &rock : rocks)
+  {
+    draw_to_buffer(rock.x, rock.y, rock);
+  }
 }
 
 void draw_info(void)
@@ -241,9 +266,24 @@ void draw_info(void)
 
 bool check_collision(int x, int y)
 {
-  if (get_from_buffer(x, y) == '.')
+  char c = get_from_buffer(x, y);
+  if (c == '.')
   {
     return false;
+  }
+  else if (c == '*')
+  {
+    // kick rock
+    int dx = x - player.x;
+    int dy = y - player.y;
+    int x2 = x + dx;
+    int y2 = y + dy;
+    if (get_from_buffer(x2, y2) == '.')
+    {
+      draw_to_buffer(x, y, Floor{});
+      draw_to_buffer(x2, y2, Rock{});
+      return false;
+    }
   }
   return true;
 }
@@ -252,34 +292,21 @@ void move(char input)
 {
   int x = player.x;
   int y = player.y;
-  switch (ch)
+  if (ch == 'h' && x > 1)
   {
-  case 'h':
-    if (x > 1)
-    {
-      x--;
-    }
-    break;
-  case 'j':
-    if (y < MAP_HEIGHT)
-    {
-      y++;
-    }
-    break;
-  case 'k':
-    if (y > 1)
-    {
-      y--;
-    }
-    break;
-  case 'l':
-    if (x < MAP_WIDTH)
-    {
-      x++;
-    }
-    break;
-  default:
-    break;
+    x--;
+  }
+  else if (ch == 'j' && y < MAP_HEIGHT)
+  {
+    y++;
+  }
+  else if (ch == 'k' && y > 1)
+  {
+    y--;
+  }
+  else if (ch == 'l' && x < MAP_WIDTH)
+  {
+    x++;
   }
   if (!check_collision(x, y))
   {
@@ -332,6 +359,7 @@ int main()
   cui_clear_screen();
   cui_cursor_off();
   init_screen_buffer(MAP_WIDTH + 2, MAP_HEIGHT + 2);
+  init_map();
   updated();
 
   while (true)
