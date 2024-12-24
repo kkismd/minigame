@@ -4,6 +4,7 @@
 #include <string>
 #include <variant>
 #include <time.h>
+#include <cassert>
 
 #define MAP_WIDTH 20
 #define MAP_HEIGHT 20
@@ -40,11 +41,7 @@ struct Rock
   int dy;
 };
 
-struct Floor
-{
-};
-
-using Cell = std::variant<std::monostate, Wall, Rock, Floor, Player, Enemy>;
+using Cell = std::variant<std::monostate, Wall, Rock, Player, Enemy>;
 
 struct Player player = {5, 5, 30, 5};
 struct Enemy enemies[] = {
@@ -54,13 +51,19 @@ struct Enemy enemies[] = {
     {17, 17, 'X', 10, 3},
 };
 std::vector<Rock> rocks;
+std::vector<std::pair<int, int>> old_positions;
 
-// 仮想画面バッファ
+// フィールド
 
-std::vector<Cell> screen_buffer;
+std::vector<Cell> field;
 
-int screen_width = 0;
-int screen_height = 0;
+int field_width = 0;
+int field_height = 0;
+
+// 文字列の配列で画面への描画をバッファするためのデータを定義する
+// 名前は screen_buffer とする
+// 画面のサイズは field_width x field_height とする
+std::vector<std::string> screen_buffer;
 
 // マップデータ
 // '.': 通路 (Floor)
@@ -91,17 +94,13 @@ const std::string map[] = {
     "####################", // 20
 };
 
-// 画面バッファを初期化
-void init_screen_buffer(int width, int height)
+// フィールドを初期化
+void init_field(int width, int height)
 {
-  screen_width = width;
-  screen_height = height;
-  screen_buffer.resize(height * width, std::monostate{});
-}
-
-void clear_screen_buffer()
-{
-  screen_buffer.assign(screen_width * screen_height, std::monostate{});
+  field_width = width;
+  field_height = height;
+  field.resize(height * width, std::monostate{});
+  screen_buffer.resize(height, std::string(width, ' '));
 }
 
 char cell_to_char(Cell cell)
@@ -114,10 +113,6 @@ char cell_to_char(Cell cell)
   {
     return '*';
   }
-  else if (std::holds_alternative<Floor>(cell))
-  {
-    return '.';
-  }
   else if (std::holds_alternative<Player>(cell))
   {
     return '@';
@@ -128,7 +123,7 @@ char cell_to_char(Cell cell)
   }
   else
   {
-    return ' ';
+    return '.';
   }
 }
 
@@ -143,7 +138,7 @@ void char_to_cell(char c, Cell &cell)
     cell = Rock{};
     break;
   case '.':
-    cell = Floor{};
+    cell = std::monostate{};
     break;
   case '@':
     cell = player;
@@ -154,48 +149,52 @@ void char_to_cell(char c, Cell &cell)
   }
 }
 
-int buffer_index(int x, int y)
+int field_index(int x, int y)
 {
-  return y * screen_width + x;
+  return y * field_width + x;
 }
 
-// 画面バッファに文字を描画
-void draw_to_buffer(int x, int y, Cell cell)
+// フィールドにオブジェクトを配置
+void put_object_to_field(int x, int y, Cell cell)
 {
-  if (y >= 0 && y < screen_height && x >= 0 && x < screen_width)
+  if (y >= 0 && y < field_height && x >= 0 && x < field_width)
   {
-    screen_buffer[buffer_index(x, y)] = cell;
+    field[field_index(x, y)] = cell;
   }
+}
+
+void remove_object_from_field(int x, int y)
+{
+  put_object_to_field(x, y, std::monostate{});
 }
 
 bool is_in_screen(int x, int y)
 {
-  return x >= 0 && x < screen_width && y >= 0 && y < screen_height;
+  return x >= 0 && x < field_width && y >= 0 && y < field_height;
 }
 
-// 画面バッファの指定位置の文字を取得
-char get_from_buffer(int x, int y)
+// フィールドの指定位置の文字を取得
+char get_field_symbol(int x, int y)
 {
   if (is_in_screen(x, y))
   {
-    Cell cell = screen_buffer[buffer_index(x, y)];
+    Cell cell = field[field_index(x, y)];
     return cell_to_char(cell);
   }
   return ' ';
 }
 
-// 画面バッファを端末に出力
+// フィールドを端末に出力
 void render_screen(int x, int y)
 {
   cui_gotoxy(x, y);
-  for (int j = 0; j < screen_height; j++)
+  for (int j = 0; j < field_height; j++)
   {
-    for (int i = 0; i < screen_width; i++)
+    for (int i = 0; i < field_width; i++)
     {
-      Cell cell = screen_buffer[buffer_index(i, j)];
-      std::cout << cell_to_char(cell);
+      screen_buffer[j][i] = get_field_symbol(i, j);
     }
-    std::cout << std::endl;
+    std::cout << screen_buffer[j] << std::endl;
   }
 }
 
@@ -233,28 +232,9 @@ void init_map()
       }
       else
       {
-        draw_to_buffer(x, y, cell);
+        put_object_to_field(x, y, cell);
       }
     }
-  }
-}
-
-void draw_map(void)
-{
-}
-
-void draw_objects(void)
-{
-  draw_to_buffer(player.x, player.y, player);
-
-  // 画面バッファにオブジェクトを描画
-  for (const auto &enemy : enemies)
-  {
-    draw_to_buffer(enemy.x, enemy.y, enemy);
-  }
-  for (const auto &rock : rocks)
-  {
-    draw_to_buffer(rock.x, rock.y, rock);
   }
 }
 
@@ -264,9 +244,10 @@ void draw_info(void)
   std::cout << "ch = " << ch;
 }
 
+// なにかに衝突したら true を返す
 bool check_collision(int x, int y)
 {
-  char c = get_from_buffer(x, y);
+  char c = get_field_symbol(x, y);
   if (c == '.')
   {
     return false;
@@ -278,11 +259,12 @@ bool check_collision(int x, int y)
     int dy = y - player.y;
     int x2 = x + dx;
     int y2 = y + dy;
-    if (get_from_buffer(x2, y2) == '.')
+    if (is_in_screen(x2, y2))
     {
-      draw_to_buffer(x, y, Floor{});
-      draw_to_buffer(x2, y2, Rock{});
-      return false;
+      Rock& rock = std::get<Rock>(field[field_index(x, y)]);
+      rock.dx = dx;
+      rock.dy = dy;
+      return true;
     }
   }
   return true;
@@ -315,6 +297,36 @@ void move(char input)
   }
 }
 
+void update_objects()
+{
+  // 古い位置のオブジェクトを削除
+  for (const auto &pos : old_positions)
+  {
+    remove_object_from_field(pos.first, pos.second);
+  }
+  old_positions.clear();
+
+  put_object_to_field(player.x, player.y, player);
+  old_positions.push_back({player.x, player.y});
+  for (auto &enemy : enemies)
+  {
+    put_object_to_field(enemy.x, enemy.y, enemy);
+    old_positions.push_back({enemy.x, enemy.y});
+  }
+
+  // 移動オブジェクトの位置を更新
+  for (auto &rock : rocks)
+  {
+    // 位置を更新するロジック
+    int new_x = rock.x + rock.dx;
+    int new_y = rock.y + rock.dy;
+    put_object_to_field(new_x, new_y, rock);
+
+    // 新しい位置を保存
+    old_positions.push_back({new_x, new_y});
+  }
+}
+
 void update(void)
 {
   int key = cui_getch_nowait();
@@ -329,10 +341,7 @@ void update(void)
     cui_cursor_on();
     exit(0);
   }
-  else
-  {
-    return;
-  }
+  update_objects();
 }
 
 void draw(void)
@@ -340,9 +349,6 @@ void draw(void)
   if (!is_updated())
     return;
 
-  clear_screen_buffer();
-  draw_map();
-  draw_objects();
   draw_info();
   render_screen(1, 3);
   cui_clear_line();
@@ -358,7 +364,7 @@ int main()
 
   cui_clear_screen();
   cui_cursor_off();
-  init_screen_buffer(MAP_WIDTH + 2, MAP_HEIGHT + 2);
+  init_field(MAP_WIDTH + 2, MAP_HEIGHT + 2);
   init_map();
   updated();
 
