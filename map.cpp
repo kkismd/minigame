@@ -5,6 +5,7 @@
 #include <variant>
 #include <time.h>
 #include <cassert>
+#include <optional>
 
 #define MAP_WIDTH 20
 #define MAP_HEIGHT 20
@@ -53,6 +54,19 @@ struct Enemy enemies[] = {
 std::vector<Rock> rocks;
 std::vector<std::pair<int, int>> old_positions;
 
+// 岩を座標から取得
+std::optional<std::reference_wrapper<Rock>> get_rock(int x, int y)
+{
+  for (Rock &rock : rocks)
+  {
+    if (rock.x == x && rock.y == y)
+    {
+      return rock;
+    }
+  }
+  return std::nullopt;
+}
+
 // フィールド
 
 std::vector<Cell> field;
@@ -74,21 +88,21 @@ const std::string map[] = {
     // 345678901234567890
     "####################", // 1
     "#..................#", // 2
-    "#..*****...........#", // 3
+    "#..................#", // 3
     "#......*...........#", // 4
     "#......*...........#", // 5
     "#......*...........#", // 6
     "#......*...........#", // 7
     "#..................#", // 8
     "#..................#", // 9
-    "#..................#", // 10
+    "#....*******.......#", // 10
     "#..................#", // 11
-    "#............*.....#", // 12
-    "#............*.....#", // 13
-    "#............*.....#", // 14
-    "#............*.....#", // 15
-    "#............*.....#", // 16
-    "#....*********.....#", // 17
+    "#..................#", // 12
+    "#..................#", // 13
+    "#..................#", // 14
+    "#..................#", // 15
+    "#..................#", // 16
+    "#..................#", // 17
     "#..................#", // 18
     "#..................#", // 19
     "####################", // 20
@@ -212,6 +226,7 @@ void drawn()
   upd = false;
 }
 
+// マップデータからフィールドを初期化する
 void init_map()
 {
   for (int y = 0; y < MAP_HEIGHT; y++)
@@ -229,6 +244,7 @@ void init_map()
         rock.dx = 0;
         rock.dy = 0;
         rocks.push_back(rock);
+        old_positions.push_back({x, y});
       }
       else
       {
@@ -240,8 +256,13 @@ void init_map()
 
 void draw_info(void)
 {
-  cui_gotoxy(1, 1);
-  std::cout << "ch = " << ch;
+  // cui_gotoxy(1, 1);
+  // std::cout << "ch = " << ch;
+  cui_gotoxy(1, 25);
+  for (Rock &rock : rocks)
+  {
+    std::cout << "Rock:(x=" << rock.x << ",y=" << rock.y << ",dx=" << rock.dx << ",dy=" << rock.dy << ")\n";
+  }
 }
 
 // なにかに衝突したら true を返す
@@ -261,10 +282,22 @@ bool check_collision(int x, int y)
     int y2 = y + dy;
     if (is_in_screen(x2, y2))
     {
-      Rock& rock = std::get<Rock>(field[field_index(x, y)]);
-      rock.dx = dx;
-      rock.dy = dy;
-      return true;
+      auto rock_opt = get_rock(x, y);
+      if (rock_opt)
+      {
+        Rock &rock = rock_opt.value().get();
+        remove_object_from_field(x, y);
+        rock.dx = dx;
+        rock.dy = dy;
+        rock.x = x2;
+        rock.y = y2;
+        put_object_to_field(x2, y2, rock);
+        cui_gotoxy(25, 3);
+        std::cout << "Rock kicked!";
+        cui_gotoxy(25, 4);
+        std::cout << "Rock:(x=" << rock.x << ",y=" << rock.y << ",dx=" << rock.dx << ",dy=" << rock.dy << ")";
+        return true;
+      }
     }
   }
   return true;
@@ -320,10 +353,32 @@ void update_objects()
     // 位置を更新するロジック
     int new_x = rock.x + rock.dx;
     int new_y = rock.y + rock.dy;
-    put_object_to_field(new_x, new_y, rock);
+
+    // 端で止まるようにする
+    if (new_x < 0 || new_x >= MAP_WIDTH)
+    {
+      rock.dx = 0;
+    }
+    else
+    {
+      rock.x = new_x;
+      updated();
+    }
+
+    if (new_y < 0 || new_y >= MAP_HEIGHT)
+    {
+      rock.dy = 0;
+    }
+    else
+    {
+      rock.y = new_y;
+      updated();
+    }
+
+    put_object_to_field(rock.x, rock.y, rock);
 
     // 新しい位置を保存
-    old_positions.push_back({new_x, new_y});
+    old_positions.push_back({rock.x, rock.y});
   }
 }
 
@@ -336,7 +391,7 @@ void update(void)
     move(ch);
     updated();
   }
-  else if (ch == 'q')
+  if (ch == 'q')
   {
     cui_cursor_on();
     exit(0);
@@ -349,8 +404,8 @@ void draw(void)
   if (!is_updated())
     return;
 
-  draw_info();
   render_screen(1, 3);
+  draw_info();
   cui_clear_line();
   cui_gotoxy(1, 1);
   drawn();
