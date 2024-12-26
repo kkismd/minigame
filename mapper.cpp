@@ -292,6 +292,14 @@ bool check_collision(int x, int y)
   {
     return false;
   }
+  else if (obj == '>')
+  {
+    game_state = GameState::StageClear;
+  }
+  else if (obj == '<')
+  {
+    game_state = GameState::GameOver;
+  }
   return true;
 }
 
@@ -357,6 +365,44 @@ void update_title(void)
   updated();
 }
 
+void update_gameover(void)
+{
+  int key = cui_getch_nowait();
+  if (key != -1)
+  {
+    ch = key;
+    if (ch == ' ')
+    {
+      game_state = GameState::Title;
+      updated();
+    }
+    else if (ch == 'q')
+    {
+      cui_cursor_on();
+      exit(0);
+    }
+  }
+}
+
+void update_stageclear(void)
+{
+  int key = cui_getch_nowait();
+  if (key != -1)
+  {
+    ch = key;
+    if (ch == ' ')
+    {
+      game_state = GameState::Title;
+      updated();
+    }
+    else if (ch == 'q')
+    {
+      cui_cursor_on();
+      exit(0);
+    }
+  }
+}
+
 void update_playing(void)
 {
   int key = cui_getch_nowait();
@@ -386,6 +432,16 @@ void update(void)
   else if (game_state == GameState::Playing)
   {
     update_playing();
+  }
+  else if (game_state == GameState::GameOver)
+  {
+    std::cout << "Game Over" << std::endl;
+    exit(0);
+  }
+  else if (game_state == GameState::StageClear)
+  {
+    std::cout << "Stage Clear" << std::endl;
+    exit(0);
   }
 }
 
@@ -418,6 +474,26 @@ void draw_title(void)
   drawn();
 }
 
+void draw_gameover(void)
+{
+  if (!is_updated())
+    return;
+
+  cui_gotoxy(5, 10);
+  std::cout << "Game Over" << std::endl;
+  drawn();
+}
+
+void draw_stageclear(void)
+{
+  if (!is_updated())
+    return;
+
+  cui_gotoxy(5, 10);
+  std::cout << "Stage Clear" << std::endl;
+  drawn();
+}
+
 void draw_playing(void)
 {
   if (!is_updated())
@@ -445,6 +521,14 @@ void draw(void)
   else if (game_state == GameState::Playing)
   {
     draw_func = draw_playing;
+  }
+  else if (game_state == GameState::GameOver)
+  {
+    draw_func = draw_gameover;
+  }
+  else if (game_state == GameState::StageClear)
+  {
+    draw_func = draw_stageclear;
   }
 
   draw_func();
