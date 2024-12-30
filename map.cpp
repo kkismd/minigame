@@ -256,13 +256,6 @@ void init_map()
 
 void draw_info(void)
 {
-  // cui_gotoxy(1, 1);
-  // std::cout << "ch = " << ch;
-  cui_gotoxy(1, 25);
-  for (Rock &rock : rocks)
-  {
-    std::cout << "Rock:(x=" << rock.x << ",y=" << rock.y << ",dx=" << rock.dx << ",dy=" << rock.dy << ")\n";
-  }
 }
 
 // なにかに衝突したら true を返す
@@ -280,22 +273,15 @@ bool check_collision(int x, int y)
     int dy = y - player.y;
     int x2 = x + dx;
     int y2 = y + dy;
-    if (is_in_screen(x2, y2))
+    char c = get_field_symbol(x2, y2);
+    if (is_in_screen(x2, y2) && c == '.')
     {
       auto rock_opt = get_rock(x, y);
       if (rock_opt)
       {
         Rock &rock = rock_opt.value().get();
-        remove_object_from_field(x, y);
         rock.dx = dx;
         rock.dy = dy;
-        rock.x = x2;
-        rock.y = y2;
-        put_object_to_field(x2, y2, rock);
-        cui_gotoxy(25, 3);
-        std::cout << "Rock kicked!";
-        cui_gotoxy(25, 4);
-        std::cout << "Rock:(x=" << rock.x << ",y=" << rock.y << ",dx=" << rock.dx << ",dy=" << rock.dy << ")";
         return true;
       }
     }
@@ -330,6 +316,50 @@ void move(char input)
   }
 }
 
+void update_rock_positions()
+{
+  for (auto &rock : rocks)
+  {
+    // 位置を更新するロジック
+    int new_x = rock.x + rock.dx;
+    int new_y = rock.y + rock.dy;
+    // 端に達した場合は移動を止める
+    if (new_x < 0 || new_x >= MAP_WIDTH)
+    {
+      rock.dx = 0;
+    }
+    if (new_y < 0 || new_y >= MAP_HEIGHT)
+    {
+      rock.dy = 0;
+    }
+    // 衝突判定 壁にぶつかったら移動を止める
+    char c = get_field_symbol(new_x, new_y);
+    if (c == '#')
+    {
+      rock.dx = 0;
+      rock.dy = 0;
+    }
+    auto rock_opt = get_rock(new_x, new_y);
+    if (rock_opt)
+    {
+      rock.dx = 0;
+      rock.dy = 0;
+    }
+
+    // 移動判定
+    if (rock.dx != 0 || rock.dy != 0)
+    {
+      rock.x = new_x;
+      rock.y = new_y;
+      updated();
+    }
+    put_object_to_field(rock.x, rock.y, rock);
+
+    // 新しい位置を保存
+    old_positions.push_back({rock.x, rock.y});
+  }
+}
+
 void update_objects()
 {
   // 古い位置のオブジェクトを削除
@@ -347,39 +377,7 @@ void update_objects()
     old_positions.push_back({enemy.x, enemy.y});
   }
 
-  // 移動オブジェクトの位置を更新
-  for (auto &rock : rocks)
-  {
-    // 位置を更新するロジック
-    int new_x = rock.x + rock.dx;
-    int new_y = rock.y + rock.dy;
-
-    // 端で止まるようにする
-    if (new_x < 0 || new_x >= MAP_WIDTH)
-    {
-      rock.dx = 0;
-    }
-    else
-    {
-      rock.x = new_x;
-      updated();
-    }
-
-    if (new_y < 0 || new_y >= MAP_HEIGHT)
-    {
-      rock.dy = 0;
-    }
-    else
-    {
-      rock.y = new_y;
-      updated();
-    }
-
-    put_object_to_field(rock.x, rock.y, rock);
-
-    // 新しい位置を保存
-    old_positions.push_back({rock.x, rock.y});
-  }
+  update_rock_positions();
 }
 
 void update(void)
@@ -419,7 +417,7 @@ int main()
 
   cui_clear_screen();
   cui_cursor_off();
-  init_field(MAP_WIDTH + 2, MAP_HEIGHT + 2);
+  init_field(MAP_WIDTH, MAP_HEIGHT);
   init_map();
   updated();
 
