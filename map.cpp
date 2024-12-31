@@ -277,9 +277,9 @@ bool check_collision(int x, int y)
     if (is_in_screen(x2, y2) && c == '.')
     {
       auto rock_opt = get_rock(x, y);
-      if (rock_opt)
+      if (rock_opt.has_value())
       {
-        Rock &rock = rock_opt.value().get();
+        Rock &rock = rock_opt.value();
         rock.dx = dx;
         rock.dy = dy;
         return true;
