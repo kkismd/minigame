@@ -3,15 +3,32 @@
 #include <vector>
 #include <string>
 #include <variant>
-#include <time.h>
 #include <cassert>
 #include <optional>
+#include <ctime>
+#include <unordered_map>
 
 #define MAP_WIDTH 20
 #define MAP_HEIGHT 20
 
-static char ch = ' ';
-static bool upd = false;
+char ch = ' ';
+bool upd = false;
+int frame = 0;
+bool spaceKeyPressed = false;
+int gameStartFrame = 0;
+
+
+// ゲームの進行状況を表すenumを定義
+enum class GameState
+{
+  Title,
+  GameStart,
+  Playing,
+  GameOver,
+  StageClear
+};
+
+GameState game_state = GameState::Title;
 
 struct Player
 {
@@ -34,6 +51,18 @@ struct Wall
 {
 };
 
+struct Door
+{
+};
+
+struct UpStairs
+{
+};
+
+struct DownStairs
+{
+};
+
 struct Rock
 {
   int x;
@@ -42,7 +71,7 @@ struct Rock
   int dy;
 };
 
-using Cell = std::variant<std::monostate, Wall, Rock, Player, Enemy>;
+using Cell = std::variant<std::monostate, Wall, Door, UpStairs, DownStairs, Rock, Player, Enemy>;
 
 struct Player player = {5, 5, 30, 5};
 struct Enemy enemies[] = {
@@ -83,6 +112,9 @@ std::vector<std::string> screen_buffer;
 // '.': 通路 (Floor)
 // '#': 壁 (Wall)
 // '*': 岩 (Rock)
+// '+': 扉 (Door)
+// '<': 上り階段(UpStairs)
+// '>': 下り階段(DownStairs)
 
 const std::string map[] = {
     // 345678901234567890
@@ -127,6 +159,18 @@ char cell_to_char(Cell cell)
   {
     return '*';
   }
+  else if (std::holds_alternative<Door>(cell))
+  {
+    return '+';
+  }
+  else if (std::holds_alternative<UpStairs>(cell))
+  {
+    return '<';
+  }
+  else if (std::holds_alternative<DownStairs>(cell))
+  {
+    return '>';
+  }
   else if (std::holds_alternative<Player>(cell))
   {
     return '@';
@@ -153,6 +197,15 @@ void char_to_cell(char c, Cell &cell)
     break;
   case '.':
     cell = std::monostate{};
+    break;
+  case '+':
+    cell = Door{};
+    break;
+  case '<':
+    cell = UpStairs{};
+    break;
+  case '>':
+    cell = DownStairs{};
     break;
   case '@':
     cell = player;
@@ -380,7 +433,64 @@ void update_objects()
   update_rock_positions();
 }
 
-void update(void)
+void update_title(void)
+{
+  int key = cui_getch_nowait();
+  if (key != -1)
+  {
+    ch = key;
+    if (spaceKeyPressed != true && ch == ' ')
+    {
+      spaceKeyPressed = true;
+      gameStartFrame = frame;
+    }
+  }
+  if (spaceKeyPressed == true && frame - gameStartFrame > 30)
+  {
+    game_state = GameState::Playing;
+  }
+  updated();
+}
+
+void update_gameover(void)
+{
+  int key = cui_getch_nowait();
+  if (key != -1)
+  {
+    ch = key;
+    if (ch == ' ')
+    {
+      game_state = GameState::Title;
+      updated();
+    }
+    else if (ch == 'q')
+    {
+      cui_cursor_on();
+      exit(0);
+    }
+  }
+}
+
+void update_stageclear(void)
+{
+  int key = cui_getch_nowait();
+  if (key != -1)
+  {
+    ch = key;
+    if (ch == ' ')
+    {
+      game_state = GameState::Title;
+      updated();
+    }
+    else if (ch == 'q')
+    {
+      cui_cursor_on();
+      exit(0);
+    }
+  }
+}
+
+void update_playing(void)
 {
   int key = cui_getch_nowait();
   if (key != -1)
@@ -397,23 +507,137 @@ void update(void)
   update_objects();
 }
 
+void update(void)
+{
+  if (game_state == GameState::Title)
+  {
+    update_title();
+  }
+  else if (game_state == GameState::Playing)
+  {
+    update_playing();
+  }
+  else if (game_state == GameState::GameOver)
+  {
+    std::cout << "Game Over" << std::endl;
+    exit(0);
+  }
+  else if (game_state == GameState::StageClear)
+  {
+    std::cout << "Stage Clear" << std::endl;
+    exit(0);
+  }
+}
+
+
+// 関数宣言
+void draw_title();
+void draw_playing();
+void draw_gameover();
+void draw_stageclear();
+
+// 関数ポインタの型を定義
+using DrawFunc = void(*)();
+
+// 状態と関数の対応をマップで管理
+std::unordered_map<GameState, DrawFunc> draw_func_map = {
+    { GameState::Title, draw_title },
+    { GameState::Playing, draw_playing },
+    { GameState::GameOver, draw_gameover },
+    { GameState::StageClear, draw_stageclear }
+};
+
 void draw(void)
+{
+  // 関数ポインタ draw_func によって描画関数を切り替える
+  void (*draw_func)() = nullptr;
+
+  if (draw_func_map.find(game_state) != draw_func_map.end())
+  {
+    draw_func = draw_func_map[game_state];
+    draw_func();
+  }
+}
+
+void draw_title(void)
+{
+  if (!is_updated())
+    return;
+
+  if (!spaceKeyPressed)
+  {
+    cui_gotoxy(5, 10);
+    std::cout << "M A P E R   G A M E";
+  }
+  else
+  {
+    int count = frame - gameStartFrame;
+    if (count < 30)
+    {
+      cui_gotoxy(1, 10);
+      for (int i = 0; i < count; i++)
+      {
+        std::cout << ".";
+      }
+    }
+    else
+    {
+      cui_clear_screen();
+    }
+  }
+  drawn();
+}
+
+void draw_gameover(void)
+{
+  if (!is_updated())
+    return;
+
+  cui_gotoxy(5, 10);
+  std::cout << "Game Over" << std::endl;
+  drawn();
+}
+
+void draw_stageclear(void)
+{
+  if (!is_updated())
+    return;
+
+  cui_gotoxy(5, 10);
+  std::cout << "Stage Clear" << std::endl;
+  drawn();
+}
+
+void draw_playing(void)
 {
   if (!is_updated())
     return;
 
   render_screen(1, 3);
   draw_info();
-  cui_clear_line();
-  cui_gotoxy(1, 1);
   drawn();
+}
+
+
+void wait(std::timespec ts1, std::timespec ts2, long interval)
+{
+  time_t sec = ts2.tv_sec - ts1.tv_sec;
+  long nsec = ts2.tv_nsec - ts1.tv_nsec;
+  if (sec == 0 && nsec < interval)
+  {
+    std::timespec remaining_time;
+    remaining_time.tv_sec = 0;
+    remaining_time.tv_nsec = interval - nsec;
+    nanosleep(&remaining_time, NULL);
+  }
 }
 
 int main()
 {
-  struct timespec req = {0};
-  req.tv_sec = 0;
-  req.tv_nsec = 33333333L; // 1/30秒 (33.33ミリ秒)
+  const long CYCLE = 33333333L; // 1/30秒 (ナノ秒単位)
+  std::timespec ts1, ts2 = {0};
+  frame = 0;
+  spaceKeyPressed = false;
 
   cui_clear_screen();
   cui_cursor_off();
@@ -423,8 +647,11 @@ int main()
 
   while (true)
   {
+    timespec_get(&ts1, TIME_UTC);
     update();
     draw();
-    nanosleep(&req, NULL); // 1/30秒スリープ
+    timespec_get(&ts2, TIME_UTC);
+    wait(ts1, ts2, CYCLE);
+    frame++;
   }
 }
