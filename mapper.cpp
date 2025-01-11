@@ -264,9 +264,9 @@ char get_field_symbol(int x, int y)
     }
   }
 
-    Cell cell = field[field_index(x, y)];
-    return cell_to_char(cell);
-  }
+  Cell cell = field[field_index(x, y)];
+  return cell_to_char(cell);
+}
 
 // フィールドを端末に出力
 void render_screen(int x, int y)
@@ -352,7 +352,7 @@ void init_map()
 
 void draw_info(void)
 {
-  cui_gotoxy(0, 25);
+  cui_gotoxy(0, 23);
   // 敵の情報を表示
   for (const auto &enemy : enemies)
   {
@@ -364,7 +364,7 @@ void draw_info(void)
 bool check_collision(int x, int y)
 {
   char c = get_field_symbol(x, y);
-  if (c == '.')
+  if (c == '.' || c == '<' || c == '>' || c == '+')
   {
     return false;
   }
@@ -416,6 +416,16 @@ void move(char input)
     player.x = x;
     player.y = y;
   }
+  // 下り階段に乗ったらクリア
+  Cell cell = field[field_index(player.x, player.y)];
+  if (std::holds_alternative<DownStairs>(cell))
+  {
+    next_game_state = GameState::StageClear;
+  }
+  else if (std::holds_alternative<UpStairs>(cell))
+  {
+    next_game_state = GameState::GameOver;
+  }
 }
 
 void update_rock_positions()
@@ -434,9 +444,9 @@ void update_rock_positions()
     {
       rock.dy = 0;
     }
-    // 衝突判定 壁にぶつかったら移動を止める
+    // 衝突判定 壁と階段にぶつかったら移動を止める
     char c = get_field_symbol(new_x, new_y);
-    if (c == '#')
+    if (c == '#' || c == '>' || c == '<')
     {
       rock.dx = 0;
       rock.dy = 0;
@@ -470,18 +480,20 @@ void update_objects()
     remove_object_from_field(pos.first, pos.second);
   }
   old_positions.clear();
-
-  old_positions.push_back({player.x, player.y});
-  for (auto &enemy : enemies)
-  {
-    old_positions.push_back({enemy.x, enemy.y});
-  }
-
   update_rock_positions();
 }
 
 void update_title(void)
 {
+  if (is_state_changed)
+  {
+    enemies.clear();
+    rocks.clear();
+    cui_clear_screen();
+    init_field(MAP_WIDTH, MAP_HEIGHT);
+    init_map();
+  }
+
   int key = cui_getch_nowait();
   if (key != -1)
   {
@@ -511,6 +523,10 @@ void update_gamestart(void)
 
 void update_gameover(void)
 {
+  if (is_state_changed)
+  {
+    updated();
+  }
   int key = cui_getch_nowait();
   if (key != -1)
   {
@@ -529,6 +545,10 @@ void update_gameover(void)
 
 void update_stageclear(void)
 {
+  if (is_state_changed)
+  {
+    updated();
+  }
   int key = cui_getch_nowait();
   if (key != -1)
   {
@@ -591,11 +611,11 @@ using DrawFunc = void (*)();
 
 // 関数ポインタの配列を定義
 DrawFunc draw_funcs[] = {
-    draw_title,      // GameState::Title
-    draw_gamestart,  // GameState::GameStart
-    draw_playing,    // GameState::Playing
-    draw_gameover,   // GameState::GameOver
-    draw_stageclear  // GameState::StageClear
+    draw_title,     // GameState::Title
+    draw_gamestart, // GameState::GameStart
+    draw_playing,   // GameState::Playing
+    draw_gameover,  // GameState::GameOver
+    draw_stageclear // GameState::StageClear
 };
 
 void draw(void)
@@ -621,19 +641,16 @@ void draw_title(void)
 
 void draw_gamestart(void)
 {
-  cui_gotoxy(5, 10);
-  std::cout << "Game Start";
-
   if (!is_updated())
     return;
 
   int count = frame - gameStartFrame;
-  if (count < 19)
+  if (count < 22)
   {
     cui_gotoxy(5, 10);
     for (int i = 0; i < count; i++)
     {
-      std::cout << "*";
+      std::cout << " ";
     }
   }
   else
@@ -648,8 +665,16 @@ void draw_gameover(void)
   if (!is_updated())
     return;
 
+  cui_gotoxy(4, 9);
+  std::cout << "               " << std::endl;
   cui_gotoxy(5, 10);
-  std::cout << "Game Over" << std::endl;
+  std::cout << " +-----------+ " << std::endl;
+  cui_gotoxy(5, 11);
+  std::cout << " | GAME OVER | " << std::endl;
+  cui_gotoxy(5, 12);
+  std::cout << " +-----------+ " << std::endl;
+  cui_gotoxy(4, 13);
+  std::cout << "               " << std::endl;
   drawn();
 }
 
@@ -658,8 +683,16 @@ void draw_stageclear(void)
   if (!is_updated())
     return;
 
+  cui_gotoxy(4, 9);
+  std::cout << "                 " << std::endl;
   cui_gotoxy(5, 10);
-  std::cout << "Stage Clear" << std::endl;
+  std::cout << " +-------------+ " << std::endl;
+  cui_gotoxy(5, 11);
+  std::cout << " | STAGE CLEAR | " << std::endl;
+  cui_gotoxy(5, 12);
+  std::cout << " +-------------+ " << std::endl;
+  cui_gotoxy(4, 13);
+  std::cout << "                 " << std::endl;
   drawn();
 }
 
@@ -688,6 +721,7 @@ void wait(std::timespec ts1, std::timespec ts2, long interval)
 
 void quit()
 {
+  cui_out_buffered();
   cui_cursor_on();
   exit(0);
 }
@@ -698,6 +732,7 @@ int main()
   std::timespec ts1, ts2 = {0};
   frame = 0;
 
+  cui_out_non_buffered();
   cui_clear_screen();
   cui_cursor_off();
   init_field(MAP_WIDTH, MAP_HEIGHT);
