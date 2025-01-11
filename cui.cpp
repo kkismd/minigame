@@ -74,6 +74,17 @@ int cui_getch_nowait()
   return ch; // Return the character read, or EOF if no input is available
 }
 
+// stdout non-buffered
+void cui_out_non_buffered()
+{
+  setvbuf(stdout, NULL, _IONBF, 0);
+}
+
+void cui_out_buffered()
+{
+  setvbuf(stdout, NULL, _IOLBF, 0);
+}
+
 void cui_clear_screen()
 {
   std::cout << ESC_SEQ << "H" << ESC_SEQ << "J";

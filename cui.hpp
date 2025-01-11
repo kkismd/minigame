@@ -3,6 +3,8 @@
 
 char cui_getch();
 int cui_getch_nowait();
+void cui_out_non_buffered();
+void cui_out_buffered();
 void cui_clear_screen();
 void cui_gotoxy(int x, int y);
 void cui_cursor_off();
