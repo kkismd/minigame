@@ -74,12 +74,7 @@ struct Rock
 using Cell = std::variant<std::monostate, Wall, Door, UpStairs, DownStairs, Rock, Player, Enemy>;
 
 struct Player player = {5, 5, 30, 5};
-struct Enemy enemies[] = {
-    {12, 5, 'A', 10, 3},
-    {10, 10, 'B', 10, 3},
-    {14, 14, 'C', 10, 3},
-    {17, 17, 'X', 10, 3},
-};
+std::vector<Enemy> enemies;
 std::vector<Rock> rocks;
 std::vector<std::pair<int, int>> old_positions;
 
@@ -123,7 +118,7 @@ const std::string map[] = {
     "####################", // 1
     "#...#..*....#....>.#", // 2
     "#.<.#..*....#......#", // 3
-    "#...#..*....#......#", // 4
+    "#.@.#..*....#.C....#", // 4
     "#...#..*....#......#", // 5
     "#...#..*....######+#", // 6
     "#...#..*......#....#", // 7
@@ -133,12 +128,12 @@ const std::string map[] = {
     "#..#***#......#....#", // 11
     "#..#...#......#....#", // 12
     "#..#...#******#....#", // 13
-    "#..#...#......#....#", // 14
-    "#..#...#......#....#", // 15
+    "#..#...#.A....#....#", // 14
+    "#..#...#......#..B.#", // 15
     "#..#...#......+....#", // 16
     "#..#...#......#....#", // 17
     "#..#...########....#", // 18
-    "#..#...............#", // 19
+    "#.X#...............#", // 19
     "####################", // 20
 };
 
@@ -212,6 +207,12 @@ void char_to_cell(char c, Cell &cell)
   case '@':
     cell = player;
     break;
+  case 'A':
+  case 'B':
+  case 'C':
+  case 'X':
+    cell = Enemy{0, 0, c, 0, 0};
+    break;
   default:
     cell = std::monostate{};
     break;
@@ -245,13 +246,27 @@ bool is_in_screen(int x, int y)
 // フィールドの指定位置の文字を取得
 char get_field_symbol(int x, int y)
 {
-  if (is_in_screen(x, y))
+  if (!is_in_screen(x, y))
   {
+    return ' ';
+  }
+  // Playerがいる場所はPlayerの文字を返す
+  if (player.x == x && player.y == y)
+  {
+    return '@';
+  }
+  // Enemyがいる場所はEnemyの文字を返す
+  for (const auto &enemy : enemies)
+  {
+    if (enemy.x == x && enemy.y == y)
+    {
+      return enemy.c;
+    }
+  }
+
     Cell cell = field[field_index(x, y)];
     return cell_to_char(cell);
   }
-  return ' ';
-}
 
 // フィールドを端末に出力
 void render_screen(int x, int y)
@@ -264,6 +279,13 @@ void render_screen(int x, int y)
       screen_buffer[j][i] = get_field_symbol(i, j);
     }
     std::cout << screen_buffer[j] << std::endl;
+  }
+  // プレイヤーを表示
+  screen_buffer[player.y][player.x] = '@';
+  // 敵を表示
+  for (const auto &enemy : enemies)
+  {
+    screen_buffer[enemy.y][enemy.x] = enemy.c;
   }
 }
 
@@ -301,6 +323,25 @@ void init_map()
         rocks.push_back(rock);
         old_positions.push_back({x, y});
       }
+      else if (std::holds_alternative<Player>(cell))
+      {
+        player.x = x;
+        player.y = y;
+        old_positions.push_back({x, y});
+        put_object_to_field(x, y, std::monostate{});
+      }
+      else if (std::holds_alternative<Enemy>(cell))
+      {
+        Enemy enemy;
+        enemy.x = x;
+        enemy.y = y;
+        enemy.c = c;
+        enemy.hp = 10;
+        enemy.attack = 3;
+        enemies.push_back(enemy);
+        old_positions.push_back({x, y});
+        put_object_to_field(x, y, std::monostate{});
+      }
       else
       {
         put_object_to_field(x, y, cell);
@@ -311,6 +352,12 @@ void init_map()
 
 void draw_info(void)
 {
+  cui_gotoxy(0, 25);
+  // 敵の情報を表示
+  for (const auto &enemy : enemies)
+  {
+    std::cout << "Enemy: " << enemy.c << " HP: " << enemy.hp << std::endl;
+  }
 }
 
 // なにかに衝突したら true を返す
@@ -424,11 +471,9 @@ void update_objects()
   }
   old_positions.clear();
 
-  put_object_to_field(player.x, player.y, player);
   old_positions.push_back({player.x, player.y});
   for (auto &enemy : enemies)
   {
-    put_object_to_field(enemy.x, enemy.y, enemy);
     old_positions.push_back({enemy.x, enemy.y});
   }
 
