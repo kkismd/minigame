@@ -14,9 +14,8 @@
 char ch = ' ';
 bool upd = false;
 int frame = 0;
-bool spaceKeyPressed = false;
 int gameStartFrame = 0;
-
+bool is_state_changed = false;
 
 // ゲームの進行状況を表すenumを定義
 enum class GameState
@@ -29,6 +28,7 @@ enum class GameState
 };
 
 GameState game_state = GameState::Title;
+GameState next_game_state = GameState::Title;
 
 struct Player
 {
@@ -82,6 +82,8 @@ struct Enemy enemies[] = {
 };
 std::vector<Rock> rocks;
 std::vector<std::pair<int, int>> old_positions;
+
+void quit();
 
 // 岩を座標から取得
 std::optional<std::reference_wrapper<Rock>> get_rock(int x, int y)
@@ -439,15 +441,25 @@ void update_title(void)
   if (key != -1)
   {
     ch = key;
-    if (spaceKeyPressed != true && ch == ' ')
+    if (ch == ' ')
     {
-      spaceKeyPressed = true;
+      next_game_state = GameState::GameStart;
       gameStartFrame = frame;
     }
+    else if (ch == 'q')
+    {
+      quit();
+    }
   }
-  if (spaceKeyPressed == true && frame - gameStartFrame > 30)
+  updated();
+}
+
+void update_gamestart(void)
+{
+  if (frame - gameStartFrame > 19)
   {
-    game_state = GameState::Playing;
+    next_game_state = GameState::Playing;
+    gameStartFrame = 0;
   }
   updated();
 }
@@ -460,13 +472,12 @@ void update_gameover(void)
     ch = key;
     if (ch == ' ')
     {
-      game_state = GameState::Title;
+      next_game_state = GameState::Title;
       updated();
     }
     else if (ch == 'q')
     {
-      cui_cursor_on();
-      exit(0);
+      quit();
     }
   }
 }
@@ -479,13 +490,12 @@ void update_stageclear(void)
     ch = key;
     if (ch == ' ')
     {
-      game_state = GameState::Title;
+      next_game_state = GameState::Title;
       updated();
     }
     else if (ch == 'q')
     {
-      cui_cursor_on();
-      exit(0);
+      quit();
     }
   }
 }
@@ -493,7 +503,7 @@ void update_stageclear(void)
 void update_playing(void)
 {
   int key = cui_getch_nowait();
-  if (key != -1)
+  if (key != -1 || is_state_changed)
   {
     ch = key;
     move(ch);
@@ -501,51 +511,46 @@ void update_playing(void)
   }
   if (ch == 'q')
   {
-    cui_cursor_on();
-    exit(0);
+    quit();
   }
   update_objects();
 }
 
+using UpdateFunc = void (*)();
+UpdateFunc update_funcs[] = {
+    update_title,      // GameState::Title
+    update_gamestart,  // GameState::GameStart
+    update_playing,    // GameState::Playing
+    update_gameover,   // GameState::GameOver
+    update_stageclear, // GameState::StageClear
+};
+
 void update(void)
 {
-  if (game_state == GameState::Title)
+  UpdateFunc update_func = update_funcs[static_cast<int>(game_state)];
+  if (update_func)
   {
-    update_title();
-  }
-  else if (game_state == GameState::Playing)
-  {
-    update_playing();
-  }
-  else if (game_state == GameState::GameOver)
-  {
-    std::cout << "Game Over" << std::endl;
-    exit(0);
-  }
-  else if (game_state == GameState::StageClear)
-  {
-    std::cout << "Stage Clear" << std::endl;
-    exit(0);
+    update_func();
   }
 }
 
-
 // 関数宣言
 void draw_title();
+void draw_gamestart();
 void draw_playing();
 void draw_gameover();
 void draw_stageclear();
 
 // 関数ポインタの型を定義
-using DrawFunc = void(*)();
+using DrawFunc = void (*)();
 
 // 関数ポインタの配列を定義
 DrawFunc draw_funcs[] = {
-    draw_title,    // GameState::Title
-    nullptr,       // GameState::GameStart (not used)
-    draw_playing,  // GameState::Playing
-    draw_gameover, // GameState::GameOver
-    draw_stageclear // GameState::StageClear
+    draw_title,      // GameState::Title
+    draw_gamestart,  // GameState::GameStart
+    draw_playing,    // GameState::Playing
+    draw_gameover,   // GameState::GameOver
+    draw_stageclear  // GameState::StageClear
 };
 
 void draw(void)
@@ -564,26 +569,31 @@ void draw_title(void)
   if (!is_updated())
     return;
 
-  if (!spaceKeyPressed)
+  cui_gotoxy(5, 10);
+  std::cout << "M A P E R   G A M E";
+  drawn();
+}
+
+void draw_gamestart(void)
+{
+  cui_gotoxy(5, 10);
+  std::cout << "Game Start";
+
+  if (!is_updated())
+    return;
+
+  int count = frame - gameStartFrame;
+  if (count < 19)
   {
     cui_gotoxy(5, 10);
-    std::cout << "M A P E R   G A M E";
+    for (int i = 0; i < count; i++)
+    {
+      std::cout << "*";
+    }
   }
   else
   {
-    int count = frame - gameStartFrame;
-    if (count < 30)
-    {
-      cui_gotoxy(1, 10);
-      for (int i = 0; i < count; i++)
-      {
-        std::cout << ".";
-      }
-    }
-    else
-    {
-      cui_clear_screen();
-    }
+    cui_clear_screen();
   }
   drawn();
 }
@@ -618,7 +628,6 @@ void draw_playing(void)
   drawn();
 }
 
-
 void wait(std::timespec ts1, std::timespec ts2, long interval)
 {
   time_t sec = ts2.tv_sec - ts1.tv_sec;
@@ -632,12 +641,17 @@ void wait(std::timespec ts1, std::timespec ts2, long interval)
   }
 }
 
+void quit()
+{
+  cui_cursor_on();
+  exit(0);
+}
+
 int main()
 {
   const long CYCLE = 33333333L; // 1/30秒 (ナノ秒単位)
   std::timespec ts1, ts2 = {0};
   frame = 0;
-  spaceKeyPressed = false;
 
   cui_clear_screen();
   cui_cursor_off();
@@ -653,5 +667,20 @@ int main()
     timespec_get(&ts2, TIME_UTC);
     wait(ts1, ts2, CYCLE);
     frame++;
+    if (frame < 0)
+    {
+      // オーバーフロー時はゼロに戻す
+      frame = 0;
+    }
+    // ゲームの状態が変わったらフラグを立てる
+    if (game_state != next_game_state)
+    {
+      game_state = next_game_state;
+      is_state_changed = true;
+    }
+    else
+    {
+      is_state_changed = false;
+    }
   }
 }
